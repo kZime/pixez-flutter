@@ -46,3 +46,5 @@ macOS 与已安装 iOS 版 PixEz 可能同时注册 `pixiv://`。授权后打开
 - [历史共享方案](history/sharing-plan.md)、[Stage A](history/stage-a.md)：保留原始研究与验收边界。
 
 从上游 `master` 创建短期功能分支；平台修复、共享逻辑和界面变化分别评审。构建产物、日志、账号数据库和本机证据不提交。Debug 通过不等于 Release 或 Windows 已验证。
+
+跨平台自动构建、测试与预览包下载见 [桌面 CI 验证](ci.md)。

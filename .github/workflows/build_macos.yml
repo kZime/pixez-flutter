@@ -1,0 +1,104 @@
+name: Build macOS Fluent Preview
+
+on:
+  push:
+    branches:
+      - macos-fluent-preview
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build macOS Fluent Preview
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      FLUTTER_XCODE_CODE_SIGN_IDENTITY: "-"
+      FLUTTER_XCODE_DEVELOPMENT_TEAM: ""
+      FLUTTER_XCODE_CODE_SIGN_STYLE: Manual
+      FLUTTER_MACOS_ARM64_ONLY: "true"
+      CARGO_PROFILE_RELEASE_STRIP: none
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: .fvmrc
+          cache: true
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Verify runner architecture
+        run: test "$(uname -m)" = "arm64"
+
+      - name: Show Flutter version
+        run: flutter --version
+
+      - name: Get app dependencies
+        run: flutter pub get --enforce-lockfile
+
+      - name: Get rhttp dependencies
+        working-directory: plugins/rhttp/rhttp
+        run: flutter pub get --enforce-lockfile
+
+      - name: Generate rhttp files
+        working-directory: plugins/rhttp/rhttp
+        run: dart run build_runner build
+
+      - name: Generate app files
+        run: dart run build_runner build
+
+      - name: Generate localization files
+        run: flutter gen-l10n
+
+      - name: Run Flutter tests
+        run: flutter test --no-pub --dart-define=MACOS_FLUENT_PREVIEW=true
+
+      - name: Build macOS release
+        run: flutter build macos --release --no-pub --dart-define=MACOS_FLUENT_PREVIEW=true
+
+      - name: Verify macOS app signature
+        run: |
+          app=build/macos/Build/Products/Release/pixez_flutter.app
+          test -d "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+
+      - name: Package macOS app
+        run: |
+          app=build/macos/Build/Products/Release/pixez_flutter.app
+          archive_name=pixez-macos-fluent-preview-arm64.zip
+          archive=dist/$archive_name
+          mkdir -p dist
+          ditto -c -k --keepParent "$app" "$archive"
+          (
+            cd dist
+            shasum -a 256 "$archive_name" | tee "$archive_name.sha256"
+          )
+
+      - name: Verify packaged app signature
+        run: |
+          extracted="$RUNNER_TEMP/macos-package-check"
+          mkdir -p "$extracted"
+          ditto -x -k dist/pixez-macos-fluent-preview-arm64.zip "$extracted"
+          codesign --verify --deep --strict --verbose=2 \
+            "$extracted/pixez_flutter.app"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: pixez-macos-fluent-preview-arm64
+          path: |
+            dist/pixez-macos-fluent-preview-arm64.zip
+            dist/pixez-macos-fluent-preview-arm64.zip.sha256
+          if-no-files-found: error
+          retention-days: 7

@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pixez/desktop/desktop_file_save.dart';
 import 'package:pixez/models/illust.dart';
+
+String _savedPath(String name) =>
+    '${Directory.systemTemp.path}${Platform.pathSeparator}$name';
 
 class _Illustration extends Fake implements Illusts {
   @override
@@ -47,8 +51,8 @@ void main() {
       final pending = save.savePages(_MultiPageIllustration(), [0, 1, 2]);
       await Future<void>.delayed(Duration.zero);
       expect(names, ['123_p0.png']);
-      first.complete(Uri.file('/tmp/123_p0.png'));
-      expect(await pending, ['/tmp/123_p0.png']);
+      first.complete(Uri.file(_savedPath('123_p0.png')));
+      expect(await pending, [_savedPath('123_p0.png')]);
       expect(names, ['123_p0.png', '123_p1.png']);
     },
   );
@@ -60,12 +64,12 @@ void main() {
       showSaveDialog:
           ({required fileName, required bytes, required mimeType}) async {
             names.add(fileName);
-            return Uri.file('/tmp/$fileName');
+            return Uri.file(_savedPath(fileName));
           },
     );
     expect(await save.savePages(_MultiPageIllustration(), [2, 0]), [
-      '/tmp/123_p2.png',
-      '/tmp/123_p0.png',
+      _savedPath('123_p2.png'),
+      _savedPath('123_p0.png'),
     ]);
     expect(names, ['123_p2.png', '123_p0.png']);
   });
@@ -87,8 +91,8 @@ void main() {
     });
     await Future<void>.delayed(Duration.zero);
     expect(completed, isFalse);
-    result.complete(Uri.file('/tmp/123_p0.png'));
-    expect(await pending, '/tmp/123_p0.png');
+    result.complete(Uri.file(_savedPath('123_p0.png')));
+    expect(await pending, _savedPath('123_p0.png'));
   });
 
   test('cancelled save returns null rather than success', () async {
@@ -119,7 +123,7 @@ void main() {
       showSaveDialog:
           ({required fileName, required bytes, required mimeType}) async {
             opened = true;
-            return Uri.file('/tmp/unwritten.png');
+            return Uri.file(_savedPath('unwritten.png'));
           },
     );
     await expectLater(save.save(_Illustration(), 0), throwsStateError);

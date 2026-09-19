@@ -51,6 +51,9 @@ jobs:
       - name: 生成代码 (PixEz)
         run: dart run build_runner build
 
+      - name: 运行 Flutter 测试
+        run: flutter test --no-pub
+
       - name: 构建项目
         shell: pwsh
         run: |-

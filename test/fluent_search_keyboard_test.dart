@@ -10,8 +10,6 @@ void main() {
   testWidgets('macOS Fluent Find opens and focuses search in compact mode', (
     tester,
   ) async {
-    if (!Constants.macosFluentPreview) return;
-
     const channel = MethodChannel('pixez/desktop_menu');
     final calls = <String>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
@@ -108,7 +106,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
     expect(calls, ['enable', 'disable']);
-  });
+  }, skip: !Constants.macosFluentPreview);
 }
 
 Future<void> _sendSearch(WidgetTester tester) async {
