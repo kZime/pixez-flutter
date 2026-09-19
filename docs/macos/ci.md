@@ -35,6 +35,8 @@ codesign --verify --deep --strict preview/pixez_flutter.app
 
 macOS 包使用 ad-hoc 签名，未做 Developer ID 签名或公证；CI 通过不代表可以公开分发，也不代表新账号 OAuth、Windows 真机交互、所有窗口尺寸或移动端已完成验收。CI 不需要 Pixiv 账号、Token 或本地数据库。
 
+完整浏览器登录与 Windows 真机测试的当前状态见 [桌面交互验收](interactive-validation.md)。
+
 上游 `7f89bc8` 的 Windows run [34675225044](https://github.com/Notsfsssf/pixez-flutter/actions/runs/34675225044) 已成功生成二进制，但失败于 MSIX 签名（SignTool 未找到匹配证书）；这与 macOS 适配的编译结果应分别判断。
 
 ## Fork 开发约定

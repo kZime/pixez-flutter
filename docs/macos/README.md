@@ -48,3 +48,5 @@ macOS 与已安装 iOS 版 PixEz 可能同时注册 `pixiv://`。授权后打开
 从上游 `master` 创建短期功能分支；平台修复、共享逻辑和界面变化分别评审。构建产物、日志、账号数据库和本机证据不提交。Debug 通过不等于 Release 或 Windows 已验证。
 
 跨平台自动构建、测试与预览包下载见 [桌面 CI 验证](ci.md)。
+
+完整浏览器登录的复测状态与 Windows 真机待测清单见 [桌面交互验收](interactive-validation.md)。
