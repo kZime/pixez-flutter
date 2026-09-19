@@ -38,6 +38,8 @@
 
 ## 贡献 / Contribute
 
+macOS 开发预览的启动方式、功能边界与验证记录见 [macOS 桌面预览](docs/macos/README.md)。
+
 本项目目前的贡献者列表如下：
 
 <table>
