@@ -22,9 +22,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:pixez/constants.dart';
 import 'package:pixez/er/fluent_leader.dart';
 import 'package:pixez/er/lprinter.dart';
-import 'package:pixez/main.dart';
-import 'package:pixez/models/account.dart';
-import 'package:pixez/network/oauth_client.dart';
+import 'package:pixez/network/auth_session.dart';
 import 'package:pixez/page/hello/android_hello_page.dart';
 import 'package:pixez/page/hello/hello_page.dart';
 import 'package:pixez/page/hello/setting/save_eval_page.dart';
@@ -141,32 +139,9 @@ class Leader {
         try {
           BotToast.showText(text: "working....");
           String code = link.queryParameters['code']!;
-          LPrinter.d("here we go:" + code);
-          Response response = await oAuthClient.code2Token(code);
-          AccountResponse accountResponse = Account.fromJson(
-            response.data,
-          ).response;
-          final user = accountResponse.user;
-          AccountProvider accountProvider = new AccountProvider();
-          await accountProvider.open();
-          var accountPersist = AccountPersist(
-            userId: user.id,
-            userImage: user.profileImageUrls.px170x170,
-            accessToken: accountResponse.accessToken,
-            refreshToken: accountResponse.refreshToken,
-            deviceToken: "",
-            passWord: "no more",
-            name: user.name,
-            account: user.account,
-            mailAddress: user.mailAddress,
-            isPremium: user.isPremium ? 1 : 0,
-            xRestrict: user.xRestrict,
-            isMailAuthorized: user.isMailAuthorized ? 1 : 0,
-          );
-          await accountProvider.insert(accountPersist);
-          await accountStore.fetch();
+          await completeAuthorizationCode(code);
           BotToast.showText(text: "Login Success");
-          if (Platform.isIOS) pushUntilHome(context);
+          if (Platform.isIOS || Platform.isMacOS) pushUntilHome(context);
         } catch (e) {
           LPrinter.d(e);
           BotToast.showText(text: e.toString());

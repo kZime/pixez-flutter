@@ -4,14 +4,25 @@ import FlutterMacOS
 @main
 class AppDelegate: FlutterAppDelegate {
     var eventSink: FlutterEventSink?
+    var initialLink: String?
+    var latestLink: String?
+
+    override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        return true
+    }
+
     override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
     }
 
     override func application(_ application: NSApplication, open urls: [URL]) {
-        print(urls)
         for i in urls {
-            eventSink?(i.absoluteString)
+            latestLink = i.absoluteString
+            if let sink = eventSink {
+                sink(i.absoluteString)
+            } else {
+                initialLink = i.absoluteString
+            }
         }
     }
 }

@@ -126,9 +126,14 @@ class AccountClient {
     if (kDebugMode) {
       dio.interceptors.add(
         LogInterceptor(
-          responseBody: true,
-          responseHeader: true,
-          requestBody: true,
+          request: false,
+          requestUrl: false,
+          requestHeader: false,
+          requestBody: false,
+          responseUrl: false,
+          responseHeader: false,
+          responseBody: false,
+          error: false,
         ),
       );
     }

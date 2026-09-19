@@ -1,63 +1,88 @@
 import Cocoa
 import FlutterMacOS
-import IOKit.ps
-import Photos
 
 class MainFlutterWindow: NSWindow, FlutterStreamHandler {
-    func saveImageToPhotosLibrary(imageData: Data) {
-        PHPhotoLibrary.shared().performChanges {
-            let creationRequest = PHAssetCreationRequest.forAsset()
-            let placeholder = creationRequest.placeholderForCreatedAsset
-            creationRequest.addResource(with: .photo, data: imageData, options: nil)
-            let albumChangeRequest = PHAssetCollectionChangeRequest(for: PHAssetCollection.fetchAssetCollections(with: .smartAlbum, subtype: .smartAlbumUserLibrary, options: nil).firstObject!)
-            albumChangeRequest?.addAssets([placeholder!] as NSFastEnumeration)
-        } completionHandler: { success, error in
-            if success {
-                print("Image saved to Photos library")
-            } else {
-                print("Error saving image to Photos library:", error?.localizedDescription ?? "")
+    private var desktopMenuChannel: FlutterMethodChannel?
+    private var desktopFindItem: NSMenuItem?
+    private var desktopBackItem: NSMenuItem?
+
+    private func findSearchItem(in menu: NSMenu?) -> NSMenuItem? {
+        for item in menu?.items ?? [] {
+            if item.tag == 1 && item.keyEquivalent == "f" {
+                return item
             }
+            if let found = findSearchItem(in: item.submenu) { return found }
         }
+        return nil
     }
-    
-    func saveImageToPhotosLibrary1(imageData: Data) {
-        if let image = NSImage(data: imageData) {
-                PHPhotoLibrary.shared().performChanges({
-                    PHAssetChangeRequest.creationRequestForAsset(from: image)
-                }) { success, error in
-                    if let error = error {
-                        print("Error saving image to Photos library: \(error.localizedDescription)")
-                    } else {
-                        print("Image saved to Photos library successfully!")
-                    }
-                }
-            } else {
-                print("Failed to create image from data.")
-            }
+
+    @objc private func searchDesktop(_ sender: Any?) {
+        desktopMenuChannel?.invokeMethod("search", arguments: nil)
     }
-    
+
+    @objc private func goBackDesktop(_ sender: Any?) {
+        desktopMenuChannel?.invokeMethod("back", arguments: nil)
+    }
+
     override func awakeFromNib() {
         let flutterViewController = FlutterViewController()
         let windowFrame = self.frame
         self.contentViewController = flutterViewController
         self.setFrame(windowFrame, display: true)
-        let batteryChannel = FlutterMethodChannel(
-            name: "com.perol.dev/custom_tab",
-            binaryMessenger: flutterViewController.engine.binaryMessenger)
-        batteryChannel.setMethodCallHandler { call, _ in
-            if call.method == "getInitialLink" {}
-        }
-
         let uniLinksChannel = FlutterMethodChannel(
             name: "deep_links/messages",
             binaryMessenger: flutterViewController.engine.binaryMessenger)
         uniLinksChannel.setMethodCallHandler { call, result in
+            let appDelegate = NSApplication.shared.delegate as! AppDelegate
             if call.method == "getInitialLink" {
-                result(nil)
+                result(appDelegate.initialLink)
+                appDelegate.initialLink = nil
+            } else if call.method == "getLatestLink" {
+                result(appDelegate.latestLink)
+            } else {
+                result(FlutterMethodNotImplemented)
             }
         }
         let eventChannel = FlutterEventChannel(name: "deep_links/events", binaryMessenger: flutterViewController.engine.binaryMessenger)
         eventChannel.setStreamHandler(self)
+
+        // The native Find menu consumes Cmd+F before Flutter's key handlers.
+        // Redirect it only while the opt-in desktop surface is mounted.
+        let menuChannel = FlutterMethodChannel(
+            name: "pixez/desktop_menu",
+            binaryMessenger: flutterViewController.engine.binaryMessenger)
+        desktopMenuChannel = menuChannel
+        menuChannel.setMethodCallHandler { [weak self] call, result in
+            guard let self = self else { result(nil); return }
+            switch call.method {
+            case "enable":
+                self.desktopFindItem = self.findSearchItem(in: NSApp.mainMenu)
+                self.desktopFindItem?.target = self
+                self.desktopFindItem?.action = #selector(self.searchDesktop(_:))
+                if self.desktopBackItem == nil,
+                   let viewMenu = NSApp.mainMenu?.items.first(where: {
+                       $0.submenu?.items.contains(where: {
+                           $0.action == #selector(NSWindow.toggleFullScreen(_:))
+                       }) == true
+                   })?.submenu {
+                    let back = NSMenuItem(title: "Back", action: #selector(self.goBackDesktop(_:)), keyEquivalent: "[")
+                    back.keyEquivalentModifierMask = [.command]
+                    back.target = self
+                    viewMenu.insertItem(back, at: 0)
+                    self.desktopBackItem = back
+                }
+                result(nil)
+            case "disable":
+                self.desktopFindItem?.target = nil
+                self.desktopFindItem?.action = Selector(("performFindPanelAction:"))
+                self.desktopFindItem = nil
+                if let back = self.desktopBackItem { back.menu?.removeItem(back) }
+                self.desktopBackItem = nil
+                result(nil)
+            default:
+                result(FlutterMethodNotImplemented)
+            }
+        }
 
         DocumentPlugin.bind(controller: flutterViewController)
 
@@ -68,6 +93,12 @@ class MainFlutterWindow: NSWindow, FlutterStreamHandler {
     func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
         let appDelegate = NSApplication.shared.delegate as! AppDelegate
         appDelegate.eventSink = events
+        DispatchQueue.main.async {
+            if let link = appDelegate.initialLink, let sink = appDelegate.eventSink {
+                appDelegate.initialLink = nil
+                sink(link)
+            }
+        }
         return nil
     }
 

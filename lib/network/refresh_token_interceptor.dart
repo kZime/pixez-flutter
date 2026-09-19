@@ -121,7 +121,6 @@ class RefreshTokenInterceptor extends QueuedInterceptorsWrapper {
       }
       var option = err.requestOptions;
       final newToken = (await getToken());
-      print("unlock retry ======================== $newToken");
       option.headers[OAuthClient.AUTHORIZATION] = newToken;
       var response = await apiClient.httpClient.request(
         option.path,
