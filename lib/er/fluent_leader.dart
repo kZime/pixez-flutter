@@ -14,6 +14,7 @@ import 'package:pixez/fluent/page/soup/soup_page.dart';
 import 'package:pixez/fluent/page/user/users_page.dart';
 import 'package:pixez/i18n.dart';
 import 'package:pixez/network/auth_session.dart';
+import 'package:pixez/network/authorization_failure.dart';
 import 'package:pixez/page/novel/viewer/novel_viewer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -75,7 +76,12 @@ class FluentLeader {
       if (link.host.contains("account")) {
         final code = link.queryParameters['code'];
         if (code == null || code.isEmpty || Constants.code_verifier == null) {
-          BotToast.showText(text: I18n.of(context).login_error_message);
+          await _showSignInError(
+            context,
+            Localizations.localeOf(context).languageCode == 'zh'
+                ? '本次登录已失效，请从应用重新发起登录，并完成新打开页面中的授权。'
+                : 'This sign-in has expired. Start again from the app and complete authorization in the newly opened page.',
+          );
           return;
         }
         try {
@@ -84,9 +90,17 @@ class FluentLeader {
           if (!context.mounted) return;
           BotToast.showText(text: "Login Success");
           pushUntilHome(context);
-        } catch (_) {
+        } catch (error) {
           if (context.mounted) {
-            BotToast.showText(text: I18n.of(context).login_error_message);
+            await _showSignInError(
+              context,
+              error is AuthorizationFailure
+                  ? error.message(
+                      chinese:
+                          Localizations.localeOf(context).languageCode == 'zh',
+                    )
+                  : I18n.of(context).failed,
+            );
           }
         }
       } else if (link.host.contains("illusts") ||
@@ -99,6 +113,22 @@ class FluentLeader {
     } else if (link.scheme == "pixez") {
       _parseUriContent(context, link);
     }
+  }
+
+  static Future<void> _showSignInError(BuildContext context, String message) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => ContentDialog(
+        title: Text(I18n.of(dialogContext).login_error_message),
+        content: Text(message),
+        actions: [
+          Button(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(I18n.of(dialogContext).ok),
+          ),
+        ],
+      ),
+    );
   }
 
   static void _parseUriContent(BuildContext context, Uri link) {

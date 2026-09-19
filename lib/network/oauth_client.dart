@@ -35,6 +35,8 @@ class OAuthClient {
   final String hashSalt =
       "28c1fdd170a5204386cb1313c7077b34f83e4aaf4aa829ce78c231e05b0bae2c";
 
+  final DateTime Function() _now;
+
   late Dio httpClient;
 
   static const BASE_OAUTH_URL_HOST = "oauth.secure.pixiv.net";
@@ -46,7 +48,7 @@ class OAuthClient {
       "W9JZoJe00qPvJsiyCGT3CCtC6ZUtdpKpzMbNlUGP"; //这换行绝了
 
   String getIsoDate() {
-    DateTime dateTime = new DateTime.now();
+    DateTime dateTime = _now().toUtc();
     DateFormat dateFormat = new DateFormat("yyyy-MM-dd'T'HH:mm:ss'+00:00'");
     return dateFormat.format(dateTime);
   }
@@ -74,7 +76,7 @@ class OAuthClient {
     return httpClient;
   }
 
-  OAuthClient() {
+  OAuthClient({DateTime Function()? now}) : _now = now ?? DateTime.now {
     String time = getIsoDate();
     httpClient = Dio(
       BaseOptions(
@@ -91,6 +93,14 @@ class OAuthClient {
         contentType: Headers.formUrlEncodedContentType,
       ),
     );
+    httpClient.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          _refreshClientHeaders(options);
+          handler.next(options);
+        },
+      ),
+    );
     if (kDebugMode) {
       httpClient.interceptors.add(
         LogInterceptor(
@@ -105,6 +115,12 @@ class OAuthClient {
         ),
       );
     }
+  }
+
+  void _refreshClientHeaders(RequestOptions options) {
+    final time = getIsoDate();
+    options.headers["X-Client-Time"] = time;
+    options.headers["X-Client-Hash"] = getHash(time + hashSalt);
   }
 
   static String getHash(String string) {
