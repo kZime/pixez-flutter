@@ -24,6 +24,29 @@ class Constants {
   static int type = 0;
   static String? code_verifier = null;
 
-  /// 为true表示使用FluentUI 否则为false,不应作为Desktop的判断
-  static final bool isFluent = Platform.isWindows;
+  /// Enables the existing Material desktop preview on macOS/Windows.
+  static final bool desktopPreview =
+      const bool.fromEnvironment('DESKTOP_PREVIEW') &&
+      (Platform.isMacOS || Platform.isWindows);
+
+  /// Enables the opt-in Fluent preview on macOS without changing its default
+  /// Material entry point. DESKTOP_PREVIEW deliberately takes precedence.
+  static final bool macosFluentPreview =
+      const bool.fromEnvironment('MACOS_FLUENT_PREVIEW') &&
+      Platform.isMacOS &&
+      !desktopPreview;
+
+  /// Selects the Fluent entry point for a platform while keeping the preview
+  /// surface independent from the normal Windows Fluent app.
+  static bool shouldUseFluent({
+    required bool isWindows,
+    required bool macosFluentPreview,
+    required bool desktopPreview,
+  }) => !desktopPreview && (isWindows || macosFluentPreview);
+
+  static final bool isFluent = shouldUseFluent(
+    isWindows: Platform.isWindows,
+    macosFluentPreview: macosFluentPreview,
+    desktopPreview: desktopPreview,
+  );
 }

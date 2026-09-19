@@ -19,21 +19,31 @@ import 'package:window_manager/window_manager.dart';
 
 WindowEffect? _effect = null;
 
-initFluent(List<String> args) async {
+Future<void> initFluent(List<String> args) async {
   if (!Constants.isFluent) return;
+
+  final keepNativeTitleBar = Constants.macosFluentPreview;
 
   // Must add this line.
   await windowManager.ensureInitialized();
   await windowManager.waitUntilReadyToShow(
     WindowOptions(
-      titleBarStyle: TitleBarStyle.hidden,
+      title: 'PixEz',
+      titleBarStyle: keepNativeTitleBar
+          ? TitleBarStyle.normal
+          : TitleBarStyle.hidden,
+      size: keepNativeTitleBar ? const Size(1180, 800) : null,
       center: true,
       skipTaskbar: false,
-      minimumSize: const Size(350, 600),
+      minimumSize: keepNativeTitleBar
+          ? const Size(760, 540)
+          : const Size(350, 600),
     ),
     () async {
-      await Window.initialize();
-      Window.hideWindowControls();
+      if (!keepNativeTitleBar) {
+        await Window.initialize();
+        Window.hideWindowControls();
+      }
 
       _effect = await getEffect();
       await windowManager.show();
@@ -103,7 +113,7 @@ Widget buildFluentUI(BuildContext context) {
             material_ui.ThemeMode.light => false,
           };
 
-          if (_effect != null) {
+          if (_effect != null && !Constants.macosFluentPreview) {
             debugPrint("背景特效: $_effect; 暗色主题: $isDark;");
             Window.setEffect(effect: _effect!, dark: isDark);
           }

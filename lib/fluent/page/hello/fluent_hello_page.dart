@@ -1,7 +1,12 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:bot_toast/bot_toast.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:pixez/constants.dart';
 import 'package:pixez/custom_icon.dart';
+import 'package:pixez/deep_link_plugin.dart';
 import 'package:pixez/er/leader.dart';
 import 'package:pixez/er/prefer.dart';
 import 'package:pixez/fluent/component/painter_avatar.dart';
@@ -32,7 +37,11 @@ class FluentHelloPage extends StatefulWidget {
 
 class _FluentHelloPageState extends State<FluentHelloPage> {
   final BookmarkPageMethodRelay relay = BookmarkPageMethodRelay();
+  final FocusNode _searchFocusNode = FocusNode(debugLabel: 'fluent-search');
   bool hideEmail = true;
+  StreamSubscription<dynamic>? _saveEvents;
+  StreamSubscription<Uri?>? _links;
+  final _receivedCodes = <String>{};
 
   @override
   void initState() {
@@ -40,14 +49,53 @@ class _FluentHelloPageState extends State<FluentHelloPage> {
     super.initState();
     fetcher.context = context;
     saveStore.ctx = this.context;
-    saveStore.saveStream.listen(saveStore.listenBehavior);
+    _saveEvents = saveStore.saveStream.listen(saveStore.listenBehavior);
 
-    // 跳转到初始化指南页
-    if (Prefer.getInt('language_num') == null) {
-      Navigator.of(
-        context,
-      ).pushReplacement(FluentPageRoute(builder: (context) => GuidePage()));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (Prefer.getInt('language_num') == null) {
+        Navigator.of(
+          context,
+        ).pushReplacement(FluentPageRoute(builder: (context) => GuidePage()));
+        return;
+      }
+      if (Platform.isMacOS) unawaited(_listenForLinks());
+    });
+  }
+
+  Future<void> _listenForLinks() async {
+    // Subscribe before reading the pending launch URL. The native bridge
+    // consumes the pending URL once, whichever path receives it first.
+    _links = DeepLinkPlugin.uriLinkStream.listen(
+      _handleLink,
+      onError: (_) => _linkError(),
+    );
+    try {
+      _handleLink(await DeepLinkPlugin.getInitialUri());
+    } catch (_) {
+      _linkError();
     }
+  }
+
+  void _linkError() {
+    if (mounted) BotToast.showText(text: I18n.of(context).failed);
+  }
+
+  void _handleLink(Uri? uri) {
+    if (!mounted || uri == null) return;
+    if (uri.scheme == 'pixiv' && uri.host == 'account') {
+      final code = uri.queryParameters['code'];
+      if (code == null || code.isEmpty || !_receivedCodes.add(code)) return;
+    }
+    unawaited(Leader.pushWithUri(context, uri));
+  }
+
+  @override
+  void dispose() {
+    _links?.cancel();
+    _saveEvents?.cancel();
+    _searchFocusNode.dispose();
+    super.dispose();
   }
 
   @override
@@ -62,7 +110,8 @@ class _FluentHelloPageState extends State<FluentHelloPage> {
           defaultTitle: const Text('PixEz'),
           displayMode: isTop ? PaneDisplayMode.top : PaneDisplayMode.auto,
           header: isTop ? null : _buildHeader(accountStore.now != null),
-          autoSuggestBox: PixEzSearchBox(),
+          searchFocusNode: _searchFocusNode,
+          autoSuggestBox: PixEzSearchBox(focusNode: _searchFocusNode),
           items: [
             PaneItem(
               icon: const Icon(FluentIcons.home),

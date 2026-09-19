@@ -23,6 +23,8 @@ import 'package:bot_toast/bot_toast.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:mobx/mobx.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:pixez/constants.dart';
+import 'package:pixez/desktop/desktop_file_save.dart';
 import 'package:pixez/document_plugin.dart';
 import 'package:pixez/er/toaster.dart';
 import 'package:pixez/exts.dart';
@@ -114,6 +116,7 @@ String applySingleFolder(Illusts illust, String baseName) {
 class SaveStore = _SaveStoreBase with _$SaveStore;
 
 abstract class _SaveStoreBase with Store {
+  Future<void> _macSaveQueue = Future<void>.value();
   _SaveStoreBase() {
     streamController = StreamController();
     saveStream = ObservableStream(streamController.stream.asBroadcastStream());
@@ -377,6 +380,15 @@ abstract class _SaveStoreBase with Store {
 
   @action
   void saveChoiceImage(Illusts illusts, List<bool> indexs) {
+    if (Platform.isMacOS && Constants.isFluent) {
+      unawaited(
+        _saveMacFiles(illusts, [
+          for (var i = 0; i < indexs.length; i++)
+            if (indexs[i]) i,
+        ]),
+      );
+      return;
+    }
     if (illusts.pageCount == 1) {
       saveImage(illusts);
     } else {
@@ -422,7 +434,6 @@ abstract class _SaveStoreBase with Store {
     return result ?? "";
   }
 
-
   Future<String> _handleFileName(
     Illusts illust,
     int index,
@@ -437,6 +448,12 @@ abstract class _SaveStoreBase with Store {
     int? index,
     bool redo = false,
   }) async {
+    if (Platform.isMacOS && Constants.isFluent) {
+      return _saveMacFiles(
+        illusts,
+        index == null ? List.generate(illusts.pageCount, (i) => i) : [index],
+      );
+    }
     if (Platform.isIOS) {
       //IOS APP STORE REVIEW
       final status = await DocumentPlugin.permissionStatus() ?? false;
@@ -467,5 +484,23 @@ abstract class _SaveStoreBase with Store {
         }
       }
     }
+  }
+
+  Future<void> _saveMacFiles(Illusts illust, List<int> pages) {
+    // Serialize requests from both cards and detail pages so save sheets
+    // cannot overlap. This preview does not enqueue mobile Photos jobs.
+    _macSaveQueue = _macSaveQueue.then((_) async {
+      try {
+        final saved = await DesktopFileSave.platform().savePages(illust, pages);
+        if (saved.isNotEmpty && ctx?.mounted == true) {
+          BotToast.showText(text: I18n.of(ctx!).saved);
+        }
+      } catch (_) {
+        if (ctx?.mounted == true) {
+          BotToast.showText(text: I18n.of(ctx!).failed);
+        }
+      }
+    });
+    return _macSaveQueue;
   }
 }

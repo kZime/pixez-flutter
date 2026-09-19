@@ -15,6 +15,7 @@
  */
 import 'dart:async';
 import 'dart:io';
+import 'package:pixez/desktop/desktop_preview_app.dart';
 
 import 'package:bot_toast/bot_toast.dart';
 import 'package:dynamic_color/dynamic_color.dart';
@@ -79,6 +80,7 @@ main(List<String> args) async {
     SingleInstancePlugin.initialize();
   }
   await initFluent(args);
+  if (Constants.desktopPreview) await initializeDesktopPreviewWindow();
 
   runApp(ProviderScope(child: MyApp(arguments: args)));
 }
@@ -131,12 +133,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     super.initState();
     if (Platform.isIOS) WidgetsBinding.instance.addObserver(this);
     Future.delayed(Duration.zero, () {
-      SingleInstancePlugin.argsParser(widget.arguments);
+      if (!Constants.desktopPreview) {
+        SingleInstancePlugin.argsParser(widget.arguments);
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (Constants.desktopPreview) {
+      return DesktopPreviewBootstrap(arguments: widget.arguments);
+    }
     return Constants.isFluent
         ? buildFluentUI(context)
         : _buildMaterial(context);

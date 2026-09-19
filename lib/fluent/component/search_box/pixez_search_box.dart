@@ -21,43 +21,54 @@ import 'package:pixez/page/webview/saucenao_webview_page.dart';
 part 'item.dart';
 
 class PixEzSearchBox extends StatefulWidget {
+  const PixEzSearchBox({super.key, this.focusNode});
+
+  final FocusNode? focusNode;
+
   @override
-  State<StatefulWidget> createState() => _PixEzSearchBoxState();
+  State<PixEzSearchBox> createState() => _PixEzSearchBoxState();
 }
 
-class _PixEzSearchBoxState extends State<StatefulWidget> {
+class _PixEzSearchBoxState extends State<PixEzSearchBox> {
   final SuggestionStore _suggestionStore = SuggestionStore();
   final TrendTagsStore _trendTagsStore = TrendTagsStore();
 
-  final _key = GlobalKey<AutoSuggestBoxState<_NextPixEzSearchBoxItem>>();
+  final _key = GlobalKey<AutoSuggestBoxState<_NextPixEzSearchBoxItemValue>>();
   final List<_NextPixEzSearchBoxItem> _items = [];
   final List<Tags> _selectedTags = [];
   final TextEditingController _controller = TextEditingController();
-  final FocusNode _focusNode = FocusNode();
+  late final FocusNode _focusNode;
+  late final bool _ownsFocusNode;
   bool _loading = false;
 
   @override
   void initState() {
-    _focusNode.addListener(() {
-      if (!_focusNode.hasFocus) {
-        if (_key.currentState?.isOverlayVisible == true)
-          _key.currentState?.dismissOverlay();
-        return;
-      }
-
-      _updateSuggestList(context);
-      _key.currentState?.showOverlay();
-    });
-
-    _updateSuggestList(context);
     super.initState();
+    _ownsFocusNode = widget.focusNode == null;
+    _focusNode = widget.focusNode ?? FocusNode(debugLabel: 'fluent-search');
+    _focusNode.addListener(_onFocusChanged);
+    _updateSuggestList(context);
   }
 
   @override
   void dispose() {
-    _focusNode.dispose();
+    _delay?.cancel();
+    _focusNode.removeListener(_onFocusChanged);
+    if (_ownsFocusNode) _focusNode.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _onFocusChanged() {
+    if (!_focusNode.hasFocus) {
+      if (_key.currentState?.isOverlayVisible == true) {
+        _key.currentState?.dismissOverlay();
+      }
+      return;
+    }
+
+    _updateSuggestList(context);
+    _key.currentState?.showOverlay();
   }
 
   void _openSauceNao() {
@@ -78,6 +89,7 @@ class _PixEzSearchBoxState extends State<StatefulWidget> {
     Widget widget = AutoSuggestBox<_NextPixEzSearchBoxItemValue>(
       key: _key,
       controller: _controller,
+      focusNode: _focusNode,
       items: _items,
       itemBuilder: _buildItem,
       onSelected: _onAutoSuggestBoxSelected,
@@ -98,18 +110,19 @@ class _PixEzSearchBoxState extends State<StatefulWidget> {
       ),
     );
 
-    widget = KeyboardListener(
-      focusNode: _focusNode,
-      child: widget,
-      onKeyEvent: (e) {
-        switch (e.logicalKey) {
+    widget = Focus(
+      onKeyEvent: (_, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        switch (event.logicalKey) {
           case LogicalKeyboardKey.enter:
           case LogicalKeyboardKey.numpadEnter:
             _search();
-            break;
+            return KeyEventResult.handled;
           default:
+            return KeyEventResult.ignored;
         }
       },
+      child: widget,
     );
 
     return widget;
@@ -437,6 +450,8 @@ class _PixEzSearchBoxState extends State<StatefulWidget> {
 
     _selectedTags.clear();
     _controller.clear();
+    _key.currentState?.dismissOverlay();
+    _focusNode.unfocus();
 
     Leader.push(
       context,
@@ -453,9 +468,11 @@ class _PixEzSearchBoxState extends State<StatefulWidget> {
     if (text.isEmpty) {
       _delay?.cancel();
       _delay = Timer(const Duration(seconds: 1), () async {
+        if (!mounted) return;
         setState(() => _loading = true);
         // 如果搜索框为空则展示历史记录
         await tagHistoryStore.fetch();
+        if (!mounted) return;
         if (tagHistoryStore.tags.isEmpty) {
           setState(() => _loading = false);
           return;
@@ -479,8 +496,10 @@ class _PixEzSearchBoxState extends State<StatefulWidget> {
 
       _delay?.cancel();
       _delay = Timer(const Duration(seconds: 1), () async {
+        if (!mounted) return;
         setState(() => _loading = true);
         await _trendTagsStore.fetch();
+        if (!mounted) return;
         if (_trendTagsStore.trendTags.isEmpty) {
           setState(() => _loading = false);
           return;
@@ -504,8 +523,10 @@ class _PixEzSearchBoxState extends State<StatefulWidget> {
 
       _delay?.cancel();
       _delay = Timer(const Duration(seconds: 1), () async {
+        if (!mounted) return;
         setState(() => _loading = true);
         await _suggestionStore.fetch(text);
+        if (!mounted) return;
         if (_suggestionStore.autoWords?.tags.isNotEmpty != true) {
           setState(() => _loading = false);
           return;
@@ -524,13 +545,13 @@ class _PixEzSearchBoxState extends State<StatefulWidget> {
   }
 
   void _notifyFinished() {
+    if (!mounted) return;
     _loading = false;
     // HACK: 通知 AutoSuggestBox 使内部的 ListView 更新
     try {
       // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
       _controller.notifyListeners();
     } catch (e) {}
-    if (!mounted) return;
     setState(() {});
   }
 

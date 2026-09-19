@@ -1,6 +1,10 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
+import 'package:pixez/constants.dart';
 import 'package:window_manager/window_manager.dart';
 
 class NavigationFramework extends StatefulWidget {
@@ -9,6 +13,7 @@ class NavigationFramework extends StatefulWidget {
   final List<NavigationPaneItem> items;
   final List<NavigationPaneItem> footerItems;
   final Widget? autoSuggestBox;
+  final FocusNode? searchFocusNode;
   final Widget? header;
   final PaneDisplayMode displayMode;
 
@@ -18,6 +23,7 @@ class NavigationFramework extends StatefulWidget {
     this.items = const [],
     this.footerItems = const [],
     this.autoSuggestBox,
+    this.searchFocusNode,
     this.header,
     this.initIndex = 0,
     this.displayMode = PaneDisplayMode.auto,
@@ -31,6 +37,16 @@ class _NavigationFrameworkState extends State<NavigationFramework>
     with WindowListener {
   final GlobalKey<PixEzNavigatorState> _navigatorKey =
       GlobalKey<PixEzNavigatorState>();
+  final FocusNode _keyboardFocusNode = FocusNode(
+    debugLabel: 'navigation-framework',
+  );
+  final GlobalKey<NavigationViewState> _navigationViewKey =
+      GlobalKey<NavigationViewState>();
+
+  static const _desktopMenu = MethodChannel('pixez/desktop_menu');
+  static _NavigationFrameworkState? _desktopMenuOwner;
+
+  bool get _usesMacDesktopMenu => Constants.macosFluentPreview;
 
   void _traverse(
     List<NavigationPaneItem> all,
@@ -48,12 +64,59 @@ class _NavigationFrameworkState extends State<NavigationFramework>
   void initState() {
     super.initState();
     windowManager.addListener(this);
+    if (_usesMacDesktopMenu) {
+      _desktopMenuOwner = this;
+      _desktopMenu.setMethodCallHandler((call) async {
+        if (call.method == 'search' && mounted) _focusSearch();
+        if (call.method == 'back' && mounted && !_isEditingText()) _onGoBack();
+      });
+      unawaited(_desktopMenu.invokeMethod<void>('enable'));
+    }
   }
 
   @override
   void dispose() {
+    if (_usesMacDesktopMenu && identical(_desktopMenuOwner, this)) {
+      _desktopMenuOwner = null;
+      _desktopMenu.setMethodCallHandler(null);
+      unawaited(_desktopMenu.invokeMethod<void>('disable'));
+    }
     windowManager.removeListener(this);
+    _keyboardFocusNode.dispose();
     super.dispose();
+  }
+
+  void _focusSearch() {
+    final navigationView = _navigationViewKey.currentState;
+    final searchFocusNode = widget.searchFocusNode;
+    if (navigationView == null || searchFocusNode == null) return;
+
+    switch (navigationView.displayMode) {
+      case PaneDisplayMode.compact:
+        if (!navigationView.compactOverlayOpen) {
+          navigationView.toggleCompactOpenMode();
+        }
+        break;
+      case PaneDisplayMode.minimal:
+        if (!navigationView.isMinimalPaneOpen) {
+          navigationView.isMinimalPaneOpen = true;
+        }
+        break;
+      case PaneDisplayMode.expanded:
+      case PaneDisplayMode.top:
+      case PaneDisplayMode.auto:
+        break;
+    }
+
+    searchFocusNode.requestFocus();
+    _requestSearchFocus(searchFocusNode);
+  }
+
+  void _requestSearchFocus(FocusNode searchFocusNode) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) searchFocusNode.requestFocus();
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   @override
@@ -98,16 +161,14 @@ class _NavigationFrameworkState extends State<NavigationFramework>
     assert(!selected.isNegative);
     assert(selected < effectiveItems.length);
 
-    return KeyboardListener(
-      focusNode: FocusNode(),
-      autofocus: true,
-      child: Listener(
-        child: NavigationView(
-          titleBar: TitleBar(
-            title:
-                _navigatorKey.currentState?.currentTitle ?? widget.defaultTitle,
-            onDragStarted: () => windowManager.startDragging(),
-            onDoubleTap: () async {
+    final titleBar = TitleBar(
+      title: _navigatorKey.currentState?.currentTitle ?? widget.defaultTitle,
+      onDragStarted: Constants.macosFluentPreview
+          ? null
+          : () => windowManager.startDragging(),
+      onDoubleTap: Constants.macosFluentPreview
+          ? null
+          : () async {
               bool isMaximized = await windowManager.isMaximized();
               if (!isMaximized) {
                 windowManager.maximize();
@@ -115,16 +176,26 @@ class _NavigationFrameworkState extends State<NavigationFramework>
                 windowManager.unmaximize();
               }
             },
-            onBackRequested: _onGoBackPress,
-            isBackButtonEnabled: _navigatorKey.currentState?.canGoBack ?? false,
-            captionControls: SizedBox(
+      onBackRequested: _onGoBackPress,
+      isBackButtonEnabled: _navigatorKey.currentState?.canGoBack ?? false,
+      captionControls: Constants.macosFluentPreview
+          ? null
+          : SizedBox(
               width: 138,
               child: WindowCaption(
                 brightness: FluentTheme.of(context).brightness,
                 backgroundColor: Colors.transparent,
               ),
             ),
-          ),
+    );
+
+    return KeyboardListener(
+      focusNode: _keyboardFocusNode,
+      autofocus: true,
+      child: Listener(
+        child: NavigationView(
+          key: _navigationViewKey,
+          titleBar: titleBar,
           pane: NavigationPane(
             displayMode: widget.displayMode,
             header: widget.header,
@@ -180,17 +251,26 @@ class _NavigationFrameworkState extends State<NavigationFramework>
   }
 
   void _onKeyEvent(KeyEvent event) {
-    if (event is KeyUpEvent) {
-      if (HardwareKeyboard.instance.isAltPressed) {
-        switch (event.logicalKey) {
-          // 键盘的 Alt + 左箭头
-          case LogicalKeyboardKey.arrowLeft:
-            _onGoBack();
-          // case LogicalKeyboardKey.arrowRight:
-          //   _onForward();
-        }
+    // The macOS preview routes this shortcut through its native View menu.
+    if (_usesMacDesktopMenu) return;
+    if (event is KeyDownEvent) {
+      final modifierPressed = Platform.isMacOS
+          ? HardwareKeyboard.instance.isMetaPressed
+          : HardwareKeyboard.instance.isAltPressed;
+      final backKey = Platform.isMacOS
+          ? LogicalKeyboardKey.bracketLeft
+          : LogicalKeyboardKey.arrowLeft;
+      if (modifierPressed && event.logicalKey == backKey && !_isEditingText()) {
+        _onGoBack();
       }
     }
+  }
+
+  bool _isEditingText() {
+    final context = FocusManager.instance.primaryFocus?.context;
+    if (context == null) return false;
+    return context.widget is EditableText ||
+        context.findAncestorWidgetOfExactType<EditableText>() != null;
   }
 
   void _onGoBackPress() => _onGoBack();
@@ -212,10 +292,7 @@ class PixEzNavigator extends StatefulWidget {
     required this.temporaryIndex,
     required this.onUpdate,
     this.onGenerateRoute,
-  }) {
-    if (key is GlobalKey<PixEzNavigatorState>)
-      _first ??= key as GlobalKey<PixEzNavigatorState>;
-  }
+  });
 
   @override
   PixEzNavigatorState createState() => PixEzNavigatorState();
@@ -286,10 +363,24 @@ class PixEzNavigatorState extends State<PixEzNavigator> {
   void initState() {
     super.initState();
 
+    if (widget.key is GlobalKey<PixEzNavigatorState>) {
+      // Register only mounted navigators. The previous constructor-time
+      // registration could leave _first pointing at a disposed route host.
+      PixEzNavigator._first = widget.key as GlobalKey<PixEzNavigatorState>;
+    }
+
     _navigatorObserver = _PixEzNavigatorObserver(
       initIndex: widget.initIndex,
       onUpdate: widget.onUpdate,
     );
+  }
+
+  @override
+  void dispose() {
+    if (PixEzNavigator._first?.currentState == this) {
+      PixEzNavigator._first = null;
+    }
+    super.dispose();
   }
 
   @override

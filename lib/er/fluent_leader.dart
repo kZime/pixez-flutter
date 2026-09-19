@@ -4,6 +4,7 @@ import 'package:bot_toast/bot_toast.dart';
 import 'package:dio/dio.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:pixez/er/lprinter.dart';
+import 'package:pixez/constants.dart';
 import 'package:pixez/fluent/navigation_framework.dart';
 import 'package:pixez/fluent/page/hello/fluent_hello_page.dart';
 import 'package:pixez/fluent/page/hello/setting/save_eval_page.dart';
@@ -12,18 +13,14 @@ import 'package:pixez/fluent/page/search/result_page.dart';
 import 'package:pixez/fluent/page/soup/soup_page.dart';
 import 'package:pixez/fluent/page/user/users_page.dart';
 import 'package:pixez/i18n.dart';
-import 'package:pixez/main.dart';
-import 'package:pixez/models/account.dart';
-import 'package:pixez/network/oauth_client.dart';
+import 'package:pixez/network/auth_session.dart';
 import 'package:pixez/page/novel/viewer/novel_viewer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class FluentLeader {
   static Future<void> pushUntilHome(BuildContext context) async {
     Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-      FluentPageRoute(
-        builder: (context) => const FluentHelloPage(),
-      ),
+      FluentPageRoute(builder: (context) => const FluentHelloPage()),
       // ignore: unnecessary_null_comparison
       (route) => route == null,
     );
@@ -32,14 +29,16 @@ class FluentLeader {
   static Future<void> pushWithUri(BuildContext context, Uri link) async {
     if (link.host == "eval" && link.scheme == "pixez") {
       showDialog(
-          context: context,
-          builder: (context) => SaveEvalPage(
-                eval: link.queryParameters["code"] != null
-                    ? String.fromCharCodes(
-                        base64Decode(link.queryParameters["code"]!))
-                    : null,
-              ),
-          useRootNavigator: false);
+        context: context,
+        builder: (context) => SaveEvalPage(
+          eval: link.queryParameters["code"] != null
+              ? String.fromCharCodes(
+                  base64Decode(link.queryParameters["code"]!),
+                )
+              : null,
+        ),
+        useRootNavigator: false,
+      );
       return;
     }
     if (link.host == "pixiv.me") {
@@ -64,8 +63,9 @@ class FluentLeader {
       FluentLeader.push(
         context,
         SoupPage(
-            url: link.toString().replaceAll("pixez://", "https://"),
-            spotlight: null),
+          url: link.toString().replaceAll("pixez://", "https://"),
+          spotlight: null,
+        ),
         icon: const Icon(FluentIcons.image_pixel),
         title: Text("${I18n.of(context).spotlight}"),
       );
@@ -73,36 +73,21 @@ class FluentLeader {
     }
     if (link.scheme == "pixiv") {
       if (link.host.contains("account")) {
+        final code = link.queryParameters['code'];
+        if (code == null || code.isEmpty || Constants.code_verifier == null) {
+          BotToast.showText(text: I18n.of(context).login_error_message);
+          return;
+        }
         try {
           BotToast.showText(text: "working....");
-          String code = link.queryParameters['code']!;
-          LPrinter.d("here we go:" + code);
-          Response response = await oAuthClient.code2Token(code);
-          AccountResponse accountResponse =
-              Account.fromJson(response.data).response;
-          final user = accountResponse.user;
-          AccountProvider accountProvider = new AccountProvider();
-          await accountProvider.open();
-          var accountPersist = AccountPersist(
-              userId: user.id,
-              userImage: user.profileImageUrls.px170x170,
-              accessToken: accountResponse.accessToken,
-              refreshToken: accountResponse.refreshToken,
-              deviceToken: "",
-              passWord: "no more",
-              name: user.name,
-              account: user.account,
-              mailAddress: user.mailAddress,
-              isPremium: user.isPremium ? 1 : 0,
-              xRestrict: user.xRestrict,
-              isMailAuthorized: user.isMailAuthorized ? 1 : 0);
-          await accountProvider.insert(accountPersist);
-          await accountStore.fetch();
+          await completeAuthorizationCode(code);
+          if (!context.mounted) return;
           BotToast.showText(text: "Login Success");
           pushUntilHome(context);
-        } catch (e) {
-          LPrinter.d(e);
-          BotToast.showText(text: e.toString());
+        } catch (_) {
+          if (context.mounted) {
+            BotToast.showText(text: I18n.of(context).login_error_message);
+          }
         }
       } else if (link.host.contains("illusts") ||
           link.host.contains("user") ||
@@ -215,10 +200,7 @@ class FluentLeader {
           else
             FluentLeader.push(
               context,
-              NovelViewerPage(
-                id: int.parse(id!),
-                novelStore: null,
-              ),
+              NovelViewerPage(id: int.parse(id!), novelStore: null),
               title: Text(I18n.of(context).novel + ': ${id}'),
               icon: Icon(FluentIcons.book_answers),
             );
@@ -264,8 +246,12 @@ class FluentLeader {
     }
   }
 
-  static Future<dynamic> pushWithScaffold(context, Widget widget,
-      {Widget? icon, Widget? title}) {
+  static Future<dynamic> pushWithScaffold(
+    context,
+    Widget widget, {
+    Widget? icon,
+    Widget? title,
+  }) {
     return FluentLeader.push(
       context,
       ScaffoldPage(content: widget),

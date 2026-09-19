@@ -14,6 +14,8 @@
  *
  */
 
+import 'dart:io';
+
 import 'package:bot_toast/bot_toast.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:pixez/custom_tab_plugin.dart';
@@ -25,6 +27,7 @@ import 'package:pixez/main.dart';
 import 'package:pixez/network/oauth_client.dart';
 import 'package:pixez/fluent/page/about/about_page.dart';
 import 'package:pixez/fluent/page/hello/setting/setting_quality_page.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 
 class LoginPage extends StatefulWidget {
   @override
@@ -112,7 +115,7 @@ class _LoginPageState extends State<LoginPage> {
                             try {
                               String url =
                                   await OAuthClient.generateWebviewUrl();
-                              _launch(url);
+                              await _launch(url);
                             } catch (e) {}
                           },
                         ),
@@ -123,7 +126,7 @@ class _LoginPageState extends State<LoginPage> {
                               String url = await OAuthClient.generateWebviewUrl(
                                 create: true,
                               );
-                              _launch(url);
+                              await _launch(url);
                             } catch (e) {}
                           },
                           child: Text(I18n.of(context).dont_have_account),
@@ -164,6 +167,12 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   _launch(url) async {
+    if (Platform.isMacOS) {
+      if (!await launchUrlString(url, mode: LaunchMode.externalApplication)) {
+        if (mounted) BotToast.showText(text: I18n.of(context).failed);
+      }
+      return;
+    }
     if (userSetting.oauthNetworkMode.usesCompatibleConnection) {
       // await WeissServer.listener();
       // await WeissPlugin.start();

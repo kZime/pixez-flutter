@@ -1,11 +1,21 @@
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
 import 'package:pixez/er/leader.dart';
 import 'package:pixez/main.dart';
 
 class SingleInstancePlugin {
   static final platform = const EventChannel("pixez/single_instance");
   static bool _isInitialized = false;
+  static void Function(Uri)? _uriHandler;
+  static Uri? _pendingUri;
+
+  static set uriHandler(void Function(Uri)? handler) {
+    _uriHandler = handler;
+    final pending = _pendingUri;
+    if (handler != null && pending != null) {
+      _pendingUri = null;
+      handler(pending);
+    }
+  }
 
   // 这个函数是确保同一时间有且只有一个Pixez实例存在的
   //
@@ -13,13 +23,10 @@ class SingleInstancePlugin {
   // 然后结束自己的进程
   static void initialize({Function()? callback}) {
     if (_isInitialized) throw Exception('ReInitialized');
-    platform.receiveBroadcastStream().listen(
-      (event) {
-        final args = event.toString().split('\n');
-        debugPrint("从另一实例接收到的参数: $args");
-        argsParser(args, callback: callback);
-      },
-    );
+    platform.receiveBroadcastStream().listen((event) {
+      final args = event.toString().split('\n');
+      argsParser(args, callback: callback);
+    });
     _isInitialized = true;
   }
 
@@ -29,10 +36,17 @@ class SingleInstancePlugin {
 
     final uri = Uri.tryParse(args[0]);
     if (uri != null) {
-      debugPrint("::argsParser(): 合法的Uri: \"${uri}\"");
-
       if (callback != null) callback();
-      Leader.pushWithUri(routeObserver.navigator!.context, uri);
+      if (_uriHandler != null) {
+        _uriHandler!(uri);
+      } else {
+        final context = routeObserver.navigator?.context;
+        if (context != null) {
+          Leader.pushWithUri(context, uri);
+        } else {
+          _pendingUri = uri;
+        }
+      }
     }
   }
 }
