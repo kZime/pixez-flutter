@@ -45,11 +45,12 @@ jobs:
         run: flutter --version
 
       - name: Get app dependencies
-        run: flutter pub get --enforce-lockfile
+        run: flutter pub get --no-example --enforce-lockfile
 
       - name: Get rhttp dependencies
         working-directory: plugins/rhttp/rhttp
-        run: flutter pub get --enforce-lockfile
+        # This vendored library ignores its own pubspec.lock, as upstream does.
+        run: flutter pub get --no-example
 
       - name: Generate rhttp files
         working-directory: plugins/rhttp/rhttp

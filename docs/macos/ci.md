@@ -9,7 +9,7 @@ macOS 与 Windows 继续共享 `lib/fluent/`。此阶段验证干净的 GitHub r
 | [Build macOS Fluent Preview](../../.github/workflows/build_macos.yml) | `macos-26`，ARM64 | Fluent 预览测试、Release 构建、打包前后严格签名校验、app ZIP 与 SHA-256 |
 | [Build Windows](../../.github/workflows/build_windows.yml) | `windows-2022`，x64 | 默认入口测试、现有 Fluent Release 构建与二进制产物 |
 
-两端均读取 `.fvmrc` 固定的 Flutter 版本。根项目和 macOS 工作流中的 rhttp 依赖使用锁文件还原，再从源码生成 MobX/Freezed 等文件。Windows 保留原有版本号与可选签名打包流程；fork 没有证书时跳过 MSIX 签名。
+两端均读取 `.fvmrc` 固定的 Flutter 版本。根项目使用锁文件还原，再从源码生成 MobX/Freezed 等文件。rhttp 子库未提交自身锁文件，沿用上游方式解析其代码生成依赖；这部分开发依赖仍存在版本漂移的边界。Windows 保留原有版本号与可选签名打包流程；fork 没有证书时跳过 MSIX 签名。
 
 macOS 工作流可由 `macos-fluent-preview` 分支 push、pull request 或手动触发。Windows 沿用现有触发规则。普通分支构建只上传 Actions artifacts，不发布 GitHub Release。macOS artifact 保留 7 天，过期后需重跑。
 
