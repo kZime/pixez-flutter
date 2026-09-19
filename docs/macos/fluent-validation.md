@@ -2,6 +2,8 @@
 
 日期：2026-09-19。工作分支：`macos-fluent-preview`。已 fast-forward 到上游 `7f89bc86f1b01e00ae65973cbc12b6c536037604`，保留之前的 macOS 平台修复与 Material 原型。
 
+本页保留最初的本地验证记录。之后的 fork、云端构建与下载产物验收见 [桌面 CI 验证](ci.md)。
+
 ## 本轮已观察到的结果
 
 | 项目 | 实测结果 |
